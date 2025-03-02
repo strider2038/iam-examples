@@ -1,0 +1,77 @@
+services:
+  app:
+    container_name: 'app'
+    networks:
+      - 'zitadel'
+    build:
+      dockerfile: ./build/packages/app/Dockerfile
+    env_file:
+      - ./.env
+      - ./.env.local
+    volumes:
+      - ./secrets:/app/secrets
+      - ./var:/app/var
+    depends_on:
+      db:
+        condition: 'service_healthy'
+
+  api_gateway:
+    container_name: 'api_gateway'
+    networks:
+      - 'zitadel'
+    build:
+      dockerfile: ./build/packages/api_gateway/Dockerfile
+    env_file:
+      - ./.env
+      - ./.env.local
+    ports:
+      - '8089:8089'
+    depends_on:
+      - app
+
+  zitadel:
+    container_name: 'zitadel'
+    restart: 'always'
+    networks:
+      - 'zitadel'
+    image: 'ghcr.io/zitadel/zitadel:latest'
+    command: 'start-from-init --masterkey "MasterkeyNeedsToHave32Characters" --tlsMode disabled'
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: db
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALDOMAIN: 'zitadel'
+      ZITADEL_EXTERNALPORT: 8080
+      ZITADEL_EXTERNALSECURE: false
+    depends_on:
+      db:
+        condition: 'service_healthy'
+    ports:
+      - '8080:8080'
+
+  db:
+    container_name: 'db'
+    restart: 'always'
+    image: postgres:16-alpine
+    environment:
+      PGUSER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks:
+      - 'zitadel'
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready", "-d", "zitadel", "-U", "postgres" ]
+      interval: '10s'
+      timeout: '30s'
+      retries: 5
+      start_period: '20s'
+    ports:
+      - '5432:5432'
+
+networks:
+  zitadel:
